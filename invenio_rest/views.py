@@ -281,7 +281,7 @@ class ContentNegotiatedMethodView(MethodView):
         # bool(:py:class:`werkzeug.datastructures.ETags`) is not consistent
         # in Python 3. bool(Etags()) == True even though it is empty.
         if (
-            len(request.if_match.as_set(include_weak=weak)) > 0
+            len(request.if_match.as_set(include_weak=True)) > 0
             or request.if_match.star_tag
         ):
             contains_etag = (
@@ -289,10 +289,14 @@ class ContentNegotiatedMethodView(MethodView):
                 if weak
                 else request.if_match.contains(etag)
             )
+            # Proxies (e.g. nginx with gzip) downgrade strong ETags to weak
+            # ones (RFC 7232 §2.3); accept weak matches as a fallback.
+            if not contains_etag:
+                contains_etag = request.if_match.contains_weak(etag)
             if not contains_etag and "*" not in request.if_match:
                 abort(412)
         if (
-            len(request.if_none_match.as_set(include_weak=weak)) > 0
+            len(request.if_none_match.as_set(include_weak=True)) > 0
             or request.if_none_match.star_tag
         ):
             contains_etag = (
@@ -300,6 +304,10 @@ class ContentNegotiatedMethodView(MethodView):
                 if weak
                 else request.if_none_match.contains(etag)
             )
+            # Proxies (e.g. nginx with gzip) downgrade strong ETags to weak
+            # ones (RFC 7232 §2.3); accept weak matches as a fallback.
+            if not contains_etag:
+                contains_etag = request.if_none_match.contains_weak(etag)
             if contains_etag or "*" in request.if_none_match:
                 if request.method in ("GET", "HEAD"):
                     raise SameContentException(etag)

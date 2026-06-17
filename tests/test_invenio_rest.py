@@ -753,6 +753,22 @@ def _subtest_content_negotiation_method_view(app, content_negotiated_class, para
             )
             check_normal_response(res, method)
 
+        # check matching weak If-None-Match against strong ETag (nginx gzip downgrade)
+        # GET/HEAD must return 304; write methods must return 412.
+        headers = [("Accept", "application/json"), ("If-None-Match", 'W/"abc"')]
+        for method in read_methods:
+            res = method("/objects/1", headers=headers)
+            check_304_response(res)
+        for method in write_methods:
+            res = method("/objects/1", headers=headers)
+            assert res.status_code == 412
+
+        # check non-matching weak If-None-Match against strong ETag (nginx gzip downgrade)
+        headers = [("Accept", "application/json"), ("If-None-Match", 'W/"xyz"')]
+        for method in all_methods:
+            res = method("/objects/1", headers=headers)
+            check_normal_response(res, method)
+
         # check matching If-Match
         headers = [("Accept", "application/json"), ("If-Match", '"abc", "def"')]
         for method in all_methods:
@@ -781,6 +797,20 @@ def _subtest_content_negotiation_method_view(app, content_negotiated_class, para
             res = method(
                 "/objects/1", headers=headers, query_string=query_string_weak_etags
             )
+            assert res.status_code == 412
+
+        # check matching weak If-Match against strong ETag (nginx gzip downgrade)
+        # When a proxy applies gzip it converts "abc" → W/"abc"; the check must
+        # still pass (weak=False, but the incoming If-Match carries a weak ETag).
+        headers = [("Accept", "application/json"), ("If-Match", 'W/"abc"')]
+        for method in all_methods:
+            res = method("/objects/1", headers=headers)
+            check_normal_response(res, method)
+
+        # check non-matching weak If-Match against strong ETag (nginx gzip downgrade)
+        headers = [("Accept", "application/json"), ("If-Match", 'W/"xyz"')]
+        for method in all_methods:
+            res = method("/objects/1", headers=headers)
             assert res.status_code == 412
 
         # check If-Modified-Since
